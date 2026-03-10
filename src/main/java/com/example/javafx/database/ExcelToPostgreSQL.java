@@ -9,65 +9,51 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Reads an Excel file and creates a corresponding PostgreSQL table with dynamic schema.
- * This class automatically infers column types from Excel data and creates the table
- * without requiring a predefined entity class.
- */
 public class ExcelToPostgreSQL {
 
-    /**
-     * Main method to import an Excel file into PostgreSQL
-     * 
-     * @param filePath     Path to the Excel file
-     * @param tableName    Name of the table to create (will be created if not exists)
-     * @param dropIfExists Whether to drop the table if it already exists
-     * @return Number of rows imported
-     */
     public int importExcelToTable(String filePath, String tableName, boolean dropIfExists) throws IOException, SQLException {
-        // Read Excel file
+
         try (Workbook workbook = new XSSFWorkbook(new FileInputStream(filePath))) {
-            Sheet sheet = workbook.getSheetAt(0); // Use first sheet
+            Sheet sheet = workbook.getSheetAt(0);
             
-            // Get headers from first row
+
             List<String> headers = getHeaders(sheet);
-            
-            // Infer column types from data rows
-            List<String> columnTypes = inferColumnTypes(sheet);
-            
-            // Create or replace table
+
+            List<String> columnTypes = inferColumnTypes(sheet, headers);
+
             createTable(tableName, headers, columnTypes, dropIfExists);
-            
-            // Insert data
+
             return insertData(tableName, headers, sheet);
         }
     }
 
-    /**
-     * Extract headers from the first row of the Excel sheet
-     */
     private List<String> getHeaders(Sheet sheet) {
         List<String> headers = new ArrayList<>();
         Row headerRow = sheet.getRow(0);
         
-        for (Cell cell : headerRow) {
-            String header = sanitizeColumnName(cell.getStringCellValue().trim());
+        int columnCount = headerRow.getPhysicalNumberOfCells();
+
+        for (int i = 0; i < columnCount; i++) {
+            Cell cell = headerRow.getCell(i);
+            if (cell == null || cell.getCellType() == CellType.BLANK) {
+                continue;
+            }
+
+            String headerValue = cell.getStringCellValue();
+            if (headerValue == null || headerValue.trim().isEmpty()) {
+                continue;
+            }
+
+            String header = sanitizeColumnName(headerValue.trim());
             headers.add(header);
         }
         
         return headers;
     }
-
-    /**
-     * Infer PostgreSQL column types based on Excel data
-     * Analyzes all data rows to determine the best type for each column
-     */
-    private List<String> inferColumnTypes(Sheet sheet) {
+    private List<String> inferColumnTypes(Sheet sheet, List<String> headers) {
         List<String> types = new ArrayList<>();
-        Row headerRow = sheet.getRow(0);
-        int columnCount = headerRow.getPhysicalNumberOfCells();
-        
-        for (int col = 0; col < columnCount; col++) {
+
+        for (int col = 0; col < headers.size(); col++) {
             String type = inferColumnType(sheet, col);
             types.add(type);
         }
@@ -75,96 +61,97 @@ public class ExcelToPostgreSQL {
         return types;
     }
 
-    /**
-     * Infer the type of a specific column by analyzing all its values
-     */
     private String inferColumnType(Sheet sheet, int columnIndex) {
-        boolean hasIntegers = true;
-        boolean hasDecimals = true;
-        boolean hasDates = true;
-        boolean hasBooleans = true;
+        boolean hasIntegers = false;
+        boolean hasDecimals = false;
+        boolean hasDates = false;
+        boolean hasBooleans = false;
+        boolean hasStrings = false;
         int maxLength = 0;
-        
-        for (int i = 1; i <= sheet.getLastRowNum(); i++) {
+        int nonEmptyCount = 0;
+
+        Row headerRow = sheet.getRow(0);
+        String columnName = headerRow.getCell(columnIndex).getStringCellValue();
+
+        int sheetLastRowNum = sheet.getLastRowNum();
+        for (int i = 1; i <= sheetLastRowNum; i++) {
             Row row = sheet.getRow(i);
             if (row == null) continue;
             
             Cell cell = row.getCell(columnIndex);
             if (cell == null || cell.getCellType() == CellType.BLANK) continue;
             
+            nonEmptyCount++;
+
             switch (cell.getCellType()) {
+                case STRING:
+                    hasStrings = true;
+                    maxLength = Math.max(maxLength, cell.getStringCellValue().length());
+                    break;
                 case NUMERIC:
                     if (DateUtil.isCellDateFormatted(cell)) {
-                        hasIntegers = false;
-                        hasDecimals = false;
-                        hasBooleans = false;
+                        hasDates = true;
                     } else {
                         double value = cell.getNumericCellValue();
                         if (value != Math.floor(value)) {
-                            hasIntegers = false;
+                            hasDecimals = true;
+                        } else {
+                            hasIntegers = true;
                         }
-                        hasDates = false;
-                        hasBooleans = false;
                     }
                     break;
-                case STRING:
-                    hasIntegers = false;
-                    hasDecimals = false;
-                    hasDates = false;
-                    hasBooleans = false;
-                    maxLength = Math.max(maxLength, cell.getStringCellValue().length());
-                    break;
                 case BOOLEAN:
-                    hasIntegers = false;
-                    hasDecimals = false;
-                    hasDates = false;
+                    hasBooleans = true;
                     break;
                 default:
-                    hasIntegers = false;
-                    hasDecimals = false;
-                    hasDates = false;
-                    hasBooleans = false;
+                    hasStrings = true;
             }
         }
-        
-        // Determine the most appropriate type
-        if (hasDates && !hasIntegers && !hasDecimals && !hasBooleans) {
-            return "DATE";
+
+        String detectedType;
+        if (nonEmptyCount == 0) {
+            detectedType = "TEXT";
         }
-        if (hasBooleans && !hasIntegers && !hasDecimals) {
-            return "BOOLEAN";
+        else if (hasBooleans && !hasStrings && !hasDecimals && !hasIntegers && !hasDates) {
+            detectedType = "BOOLEAN";
         }
-        if (hasIntegers && !hasDecimals) {
-            return "INTEGER";
+        else if (hasDates && !hasStrings && !hasIntegers && !hasDecimals) {
+            detectedType = "DATE";
         }
-        if (hasDecimals) {
-            return "DECIMAL(15, 2)";
+        else if (hasDecimals) {
+            detectedType = "DECIMAL(15, 2)";
         }
-        
-        // Default to TEXT or VARCHAR
-        if (maxLength > 0 && maxLength <= 255) {
-            return "VARCHAR(" + (maxLength + 50) + ")"; // Add buffer
+        else if (hasIntegers) {
+            detectedType = "INTEGER";
         }
-        return "TEXT";
+        else if (hasStrings) {
+            if (maxLength > 0 && maxLength <= 255) {
+                detectedType = "VARCHAR(" + (maxLength + 50) + ")";
+            } else {
+                detectedType = "TEXT";
+            }
+        }
+        else {
+            detectedType = "TEXT";
+        }
+        System.out.println("Column '" + columnName + "' detected as: " + detectedType +
+            " (strings=" + hasStrings + ", dates=" + hasDates + ", integers=" + hasIntegers +
+            ", decimals=" + hasDecimals + ", booleans=" + hasBooleans + ")");
+
+        return detectedType;
     }
 
-    /**
-     * Sanitize column name to be PostgreSQL-compatible
-     */
     private String sanitizeColumnName(String name) {
-        // Replace spaces and special characters with underscores
+
         String sanitized = name.replaceAll("[^a-zA-Z0-9_]", "_");
-        // Ensure it doesn't start with a number
+
         if (sanitized.matches("^[0-9].*")) {
             sanitized = "col_" + sanitized;
         }
-        // Convert to lowercase for PostgreSQL convention
+
         return sanitized.toLowerCase();
     }
 
-    /**
-     * Create the PostgreSQL table with the inferred schema
-     */
     private void createTable(String tableName, List<String> headers, List<String> columnTypes, boolean dropIfExists) throws SQLException {
         StringBuilder sql = new StringBuilder();
         
@@ -174,18 +161,15 @@ public class ExcelToPostgreSQL {
         
         sql.append("CREATE TABLE IF NOT EXISTS ").append(tableName).append(" (\n");
 
-        // Check if 'id' column already exists in headers
         boolean hasIdColumn = headers.stream().anyMatch(h -> h.equalsIgnoreCase("id"));
 
-        // Only add auto-generated id if not present in Excel
         if (!hasIdColumn) {
-            sql.append("    id SERIAL PRIMARY KEY,\n"); // Auto-increment ID
+            sql.append("    id SERIAL PRIMARY KEY,\n");
         }
 
         for (int i = 0; i < headers.size(); i++) {
             sql.append("    ").append(headers.get(i)).append(" ").append(columnTypes.get(i));
 
-            // Make the Excel's ID column the primary key if it exists
             if (headers.get(i).equalsIgnoreCase("id")) {
                 sql.append(" PRIMARY KEY");
             }
@@ -206,11 +190,8 @@ public class ExcelToPostgreSQL {
         }
     }
 
-    /**
-     * Insert data from Excel into the PostgreSQL table
-     */
     private int insertData(String tableName, List<String> headers, Sheet sheet) throws SQLException {
-        // Build INSERT statement
+
         StringBuilder sql = new StringBuilder();
         sql.append("INSERT INTO ").append(tableName).append(" (");
         
@@ -235,41 +216,48 @@ public class ExcelToPostgreSQL {
         int rowsInserted = 0;
         
         try (Connection conn = DatabaseConfig.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql.toString())) {
-            
-            // Skip header row (start from row 1)
+             PreparedStatement preparedStatement = conn.prepareStatement(sql.toString())) {
+
             for (int i = 1; i <= sheet.getLastRowNum(); i++) {
                 Row row = sheet.getRow(i);
                 if (row == null) continue;
-                
+
+                boolean isRowEmpty = true;
                 for (int col = 0; col < headers.size(); col++) {
                     Cell cell = row.getCell(col);
-                    setPreparedStatementValue(pstmt, col + 1, cell);
+                    if (cell != null && cell.getCellType() != CellType.BLANK) {
+                        isRowEmpty = false;
+                        break;
+                    }
                 }
-                
-                pstmt.addBatch();
+
+                if (isRowEmpty) {
+                    continue;
+                }
+
+                for (int col = 0; col < headers.size(); col++) {
+                    Cell cell = row.getCell(col);
+                    setPreparedStatementValue(preparedStatement, col + 1, cell);
+                }
+
+                preparedStatement.addBatch();
                 rowsInserted++;
-                
-                // Execute batch every 100 rows for performance
+
                 if (rowsInserted % 100 == 0) {
-                    pstmt.executeBatch();
+                    preparedStatement.executeBatch();
                 }
             }
-            
-            // Execute remaining batch
-            pstmt.executeBatch();
+
+            preparedStatement.executeBatch();
         }
         
         System.out.println(rowsInserted + " rows inserted into '" + tableName + "'.");
         return rowsInserted;
     }
 
-    /**
-     * Set a PreparedStatement parameter based on cell type
-     */
     private void setPreparedStatementValue(PreparedStatement pstmt, int index, Cell cell) throws SQLException {
         if (cell == null || cell.getCellType() == CellType.BLANK) {
-            pstmt.setNull(index, Types.VARCHAR);
+            pstmt.setNull(index, Types.NULL);
             return;
         }
         
@@ -293,7 +281,6 @@ public class ExcelToPostgreSQL {
                 pstmt.setBoolean(index, cell.getBooleanCellValue());
                 break;
             case FORMULA:
-                // Evaluate formula and set the result
                 switch (cell.getCachedFormulaResultType()) {
                     case STRING:
                         pstmt.setString(index, cell.getStringCellValue());
