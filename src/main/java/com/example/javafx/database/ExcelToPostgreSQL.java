@@ -30,7 +30,7 @@ public class ExcelToPostgreSQL {
     private List<String> getHeaders(Sheet sheet) {
         List<String> headers = new ArrayList<>();
         Row headerRow = sheet.getRow(0);
-        
+
         int columnCount = headerRow.getPhysicalNumberOfCells();
 
         for (int i = 0; i < columnCount; i++) {
@@ -43,11 +43,17 @@ public class ExcelToPostgreSQL {
             if (headerValue == null || headerValue.trim().isEmpty()) {
                 continue;
             }
-
             String header = sanitizeColumnName(headerValue.trim());
-            headers.add(header);
+
+            int count = 1;
+            String uniqueHeader = header;
+            while (headers.contains(uniqueHeader)) {
+                uniqueHeader = header + "_" + count;
+                count++;
+            }
+            headers.add(uniqueHeader);
         }
-        
+
         return headers;
     }
     private List<String> inferColumnTypes(Sheet sheet, List<String> headers) {
@@ -142,8 +148,7 @@ public class ExcelToPostgreSQL {
     }
 
     private String sanitizeColumnName(String name) {
-
-        String sanitized = name.replaceAll("[^a-zA-Z0-9_]", "_");
+        String sanitized = name.replaceAll("[^\\p{L}\\p{Nd}_]", "_");
 
         if (sanitized.matches("^[0-9].*")) {
             sanitized = "col_" + sanitized;
