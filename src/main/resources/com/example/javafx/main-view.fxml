@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.text.Font?>
+<BorderPane xmlns:fx="http://javafx.com/fxml"
+            fx:controller="com.example.javafx.controller.MainController"
+            prefHeight="700.0" prefWidth="900.0">
+    <top>
+        <VBox style="-fx-background-color: #2c3e50;">
+            <padding>
+                <Insets bottom="15" left="20" right="20" top="15"/>
+            </padding>
+            <Label text="Excel to PostgreSQL Importer" textFill="white">
+                <font>
+                    <Font size="20"/>
+                </font>
+            </Label>
+            <Label text="Import Excel files directly into PostgreSQL databases" textFill="#bdc3c7">
+                <font>
+                    <Font size="12"/>
+                </font>
+            </Label>
+        </VBox>
+    </top>
+    <center>
+        <VBox spacing="15">
+            <padding>
+                <Insets bottom="20" left="20" right="20" top="20"/>
+            </padding>
+            <TitledPane text="File Selection" expanded="true">
+                <VBox spacing="10">
+                    <padding>
+                        <Insets bottom="10" left="10" right="10" top="10"/>
+                    </padding>
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <Label text="Excel File:" minWidth="80"/>
+                        <TextField fx:id="filePathField" HBox.hgrow="ALWAYS" promptText="Select an Excel file..."/>
+                        <Button fx:id="browseButton" text="Browse..." onAction="#onBrowseButtonClick"/>
+                    </HBox>
+                </VBox>
+            </TitledPane>
+            <TitledPane text="Database Connection" expanded="true">
+                <GridPane hgap="10" vgap="10">
+                    <padding>
+                        <Insets bottom="10" left="10" right="10" top="10"/>
+                    </padding>
+
+                    <Label text="Host:" GridPane.columnIndex="0" GridPane.rowIndex="0"/>
+                    <TextField fx:id="hostField" GridPane.columnIndex="1" GridPane.rowIndex="0" promptText="localhost"/>
+
+                    <Label text="Port:" GridPane.columnIndex="2" GridPane.rowIndex="0"/>
+                    <TextField fx:id="portField" GridPane.columnIndex="3" GridPane.rowIndex="0" promptText="5432" maxWidth="80"/>
+
+                    <Label text="Database:" GridPane.columnIndex="0" GridPane.rowIndex="1"/>
+                    <TextField fx:id="databaseField" GridPane.columnIndex="1" GridPane.rowIndex="1" promptText="database_name"/>
+
+                    <Label text="Schema:" GridPane.columnIndex="2" GridPane.rowIndex="1"/>
+                    <TextField fx:id="schemaField" GridPane.columnIndex="3" GridPane.rowIndex="1" promptText="public" maxWidth="100"/>
+
+                    <Label text="Username:" GridPane.columnIndex="0" GridPane.rowIndex="2"/>
+                    <TextField fx:id="usernameField" GridPane.columnIndex="1" GridPane.rowIndex="2" promptText="postgres"/>
+
+                    <Label text="Password:" GridPane.columnIndex="2" GridPane.rowIndex="2"/>
+                    <PasswordField fx:id="passwordField" GridPane.columnIndex="3" GridPane.rowIndex="2"/>
+
+                    <Button fx:id="testConnectionButton" text="Test Connection" onAction="#onTestConnectionButtonClick" GridPane.columnIndex="0" GridPane.rowIndex="3" GridPane.columnSpan="2"/>
+                    <Label fx:id="connectionStatusLabel" textFill="green" GridPane.columnIndex="2" GridPane.rowIndex="3" GridPane.columnSpan="2"/>
+                </GridPane>
+            </TitledPane>
+            <TitledPane text="Table Settings" expanded="true">
+                <HBox spacing="15" alignment="CENTER_LEFT">
+                    <padding>
+                        <Insets bottom="10" left="10" right="10" top="10"/>
+                    </padding>
+                    <Label text="Table Name:"/>
+                    <TextField fx:id="tableNameField" promptText="table_name"/>
+                    <CheckBox fx:id="dropTableCheckBox" text="Drop table if exists" selected="true"/>
+                    <CheckBox fx:id="createIdCheckBox" text="Auto-generate ID column" selected="true"/>
+                </HBox>
+            </TitledPane>
+            <TitledPane text="Data Preview" expanded="true" VBox.vgrow="ALWAYS">
+                <VBox>
+                    <padding>
+                        <Insets bottom="10" left="10" right="10" top="10"/>
+                    </padding>
+                    <TableView fx:id="previewTableView" VBox.vgrow="ALWAYS">
+                        <placeholder>
+                            <Label text="No data loaded. Select an Excel file to preview."/>
+                        </placeholder>
+                    </TableView>
+                </VBox>
+            </TitledPane>
+            <VBox spacing="5">
+                <Label text="Progress:"/>
+                <ProgressBar fx:id="progressBar" prefWidth="Infinity" progress="0"/>
+                <Label fx:id="progressLabel" text="Ready"/>
+            </VBox>
+        </VBox>
+    </center>
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_RIGHT" style="-fx-background-color: #ecf0f1;">
+            <padding>
+                <Insets bottom="15" left="20" right="20" top="15"/>
+            </padding>
+            <Button fx:id="loadPreviewButton" text="Load Preview" onAction="#onLoadPreviewButtonClick"/>
+            <Button fx:id="importButton" text="Import to Database" onAction="#onImportButtonClick" style="-fx-background-color: #27ae60; -fx-text-fill: white;"/>
+            <Button fx:id="cancelButton" text="Cancel" onAction="#onCancelButtonClick"/>
+        </HBox>
+    </bottom>
+
+</BorderPane>
