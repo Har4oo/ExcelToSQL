@@ -56,4 +56,12 @@ public class DatabaseConfig {
             return false;
         }
     }
+    public static void setCredentials(String url, String username, String password) {
+        if (properties == null) {
+            properties = new Properties();
+        }
+        properties.setProperty("db.url", url);
+        properties.setProperty("db.username", username);
+        properties.setProperty("db.password", password);
+    }
 }
