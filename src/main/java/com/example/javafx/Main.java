@@ -4,6 +4,7 @@ import com.example.javafx.database.DatabaseConfig;
 import com.example.javafx.database.ExcelToPostgreSQL;
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
+import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 import org.apache.poi.ss.usermodel.Cell;
@@ -15,10 +16,22 @@ import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import java.io.*;
 import java.sql.SQLException;
 
-public class Main {
+public class Main extends Application{
 
     public static void main(String[] args) {
         importExcelToPostgreSQLDemo();
+        launch(args);
+    }
+
+    @Override
+    public void start(Stage primaryStage) throws Exception {
+        FXMLLoader loader = new FXMLLoader(getClass().getResource("main-view.fxml"));
+        Parent root = loader.load();
+        Scene scene = new Scene(root);
+        primaryStage.setTitle("Excel to PostgreSQL Importer");
+        primaryStage.setScene(scene);
+        primaryStage.setResizable(true);
+        primaryStage.show();
     }
 
     public static void importExcelToPostgreSQLDemo() {
