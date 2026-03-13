@@ -9,6 +9,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.util.prefs.Preferences;
 
 public class MainController {
 
@@ -73,25 +74,54 @@ public class MainController {
 
     private File selectedFile;
 
+    private Preferences prefs;
 
     @FXML
     public void initialize() {
+        prefs = Preferences.userNodeForPackage(MainController.class);
 
-//        hostField.setText("localhost" );
-//        portField.setText("5432" );
-//        schemaField.setText("public" );
-//        usernameField.setText("postgres" );
-//        progressBar.setProgress(0);
-//        progressLabel.setText("Ready" );
+        hostField.setText(prefs.get("host", "localhost"));
+        portField.setText(prefs.get("port", "5432"));
+        databaseField.setText(prefs.get("database", ""));
+        schemaField.setText(prefs.get("schema", "public"));
+        usernameField.setText(prefs.get("username", "postgres"));
 
+        tableNameField.setText(prefs.get("tableName", ""));
+        dropTableCheckBox.setSelected(prefs.getBoolean("dropTable", true));
+        createIdCheckBox.setSelected(prefs.getBoolean("createId", true));
+
+        String lastFilePath = prefs.get("filePath", "");
+        if (!lastFilePath.isEmpty()) {
+            File savedFile = new File(lastFilePath);
+            if (savedFile.exists()) {
+                selectedFile = savedFile;
+                filePathField.setText(lastFilePath);
+                progressLabel.setText("Restored previous file: " + savedFile.getName());
+            }
+        }
 
         importButton.setDisable(true);
+        progressBar.setProgress(0);
 
         filePathField.textProperty().addListener((observable, oldValue, newValue) -> {
             updateImportButtonState();
         });
+        updateImportButtonState();
 
-        System.out.println("MainController initialized successfully!" );
+        System.out.println("MainController initialized and preferences loaded!");
+    }
+
+    public void saveSessionData() {
+        prefs.put("host", hostField.getText().trim());
+        prefs.put("port", portField.getText().trim());
+        prefs.put("database", databaseField.getText().trim());
+        prefs.put("schema", schemaField.getText().trim());
+        prefs.put("username", usernameField.getText().trim());
+        prefs.put("filePath", filePathField.getText().trim());
+        prefs.put("tableName", tableNameField.getText().trim());
+        prefs.putBoolean("dropTable", dropTableCheckBox.isSelected());
+        prefs.putBoolean("createId", createIdCheckBox.isSelected());
+        System.out.println("Session data saved successfully.");
     }
 
     @FXML
@@ -234,13 +264,14 @@ public class MainController {
             loadPreviewButton.setDisable(false);
             error.printStackTrace();
         });
+        saveSessionData();
         new Thread(importTask).start();
     }
 
     @FXML
     private void onCancelButtonClick() {
-        System.out.println("Cancel button clicked!" );
-
+        System.out.println("Cancel button clicked!");
+        saveSessionData();
         Stage stage = (Stage) cancelButton.getScene().getWindow();
         stage.close();
     }

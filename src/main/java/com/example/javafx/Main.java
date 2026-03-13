@@ -27,6 +27,13 @@ public class Main extends Application{
     public void start(Stage primaryStage) throws Exception {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("main-view.fxml"));
         Parent root = loader.load();
+
+
+        com.example.javafx.controller.MainController controller = loader.getController();
+        primaryStage.setOnCloseRequest(event -> {
+            controller.saveSessionData();
+        });
+
         Scene scene = new Scene(root);
         primaryStage.setTitle("Excel to PostgreSQL Importer");
         primaryStage.setScene(scene);

@@ -5,6 +5,7 @@ module com.example.javafx {
     requires org.apache.poi.ooxml;
     requires jdk.compiler;
     requires java.sql;
+    requires java.prefs;
 
 
     opens com.example.javafx to javafx.fxml;
