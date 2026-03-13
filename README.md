@@ -1,5 +1,7 @@
 # Excel to PostgreSQL Importer
 
+![image](src/main/resources/ui_example.png)
+
 A robust, JavaFX-based desktop application that seamlessly imports messy, unstructured Excel files (`.xlsx`, `.xls`) directly into a PostgreSQL database.
 
 The tool takes the headache out of data migration by automatically scanning your Excel sheets, inferring the correct SQL data types, safely handling "phantom" empty rows, and executing high-performance batch inserts.

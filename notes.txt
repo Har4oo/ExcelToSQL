@@ -1,5 +1,0 @@
-1. Number of sheets
-2. Name of DB Server
-3. Name of DB Schema
-4. Test connection button
-5. The name of xlsx file corresponds to the table created
