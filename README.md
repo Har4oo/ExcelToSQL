@@ -1,5 +1,13 @@
 # Excel to PostgreSQL Importer
 
+1. Download the ZIP
+2. Run the .exe
+3. Choose .xlsx file
+4. Deliver database's information
+5. Test connection
+6. Write down a table name
+7. Import to Database
+
 ![image](src/main/resources/ui_example.png)
 
 A robust, JavaFX-based desktop application that seamlessly imports messy, unstructured Excel files (`.xlsx`, `.xls`) directly into a PostgreSQL database.
