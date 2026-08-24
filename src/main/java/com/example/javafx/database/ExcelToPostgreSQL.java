@@ -29,7 +29,12 @@ public class ExcelToPostgreSQL {
      *  never by the per-cell type, so a stray numeric cell in a TEXT column can't break the INSERT. */
     private enum ColType { TEXT, BIGINT, DECIMAL, DATE, BOOLEAN }
 
+    /** Backwards-compatible entry point: imports into the default (public) schema. */
     public int importExcelToTable(String filePath, String tableName, boolean dropIfExists) throws IOException, SQLException {
+        return importExcelToTable(filePath, null, tableName, dropIfExists);
+    }
+
+    public int importExcelToTable(String filePath, String schema, String tableName, boolean dropIfExists) throws IOException, SQLException {
 
         try (Workbook workbook = new XSSFWorkbook(new FileInputStream(filePath))) {
             Sheet sheet = workbook.getSheetAt(0);
@@ -40,9 +45,39 @@ public class ExcelToPostgreSQL {
             }
             List<String> columnTypes = inferColumnTypes(sheet, headers);
 
-            createTable(tableName, headers, columnTypes, dropIfExists);
+            createSchemaIfNeeded(schema);
 
-            return insertData(tableName, headers, columnTypes, sheet);
+            // Fully-qualified, quoted target ("schema"."table") so the table lands in the chosen
+            // schema instead of always defaulting to whatever is first on the search_path (public).
+            String target = qualifiedTable(schema, tableName);
+
+            createTable(target, headers, columnTypes, dropIfExists);
+
+            return insertData(target, headers, columnTypes, sheet);
+        }
+    }
+
+    /** Build a quoted, optionally schema-qualified table reference. */
+    private String qualifiedTable(String schema, String tableName) {
+        if (schema == null || schema.trim().isEmpty()) {
+            return quote(tableName);
+        }
+        return quote(schema.trim()) + "." + quote(tableName);
+    }
+
+    /** Create the target schema up front so a non-existent schema doesn't fail the import. */
+    private void createSchemaIfNeeded(String schema) throws SQLException {
+        if (schema == null) return;
+        String s = schema.trim();
+        if (s.isEmpty() || s.equalsIgnoreCase("public")) return;
+
+        String sql = "CREATE SCHEMA IF NOT EXISTS " + quote(s) + ";";
+        log("Ensuring schema exists:\n" + sql + "\n");
+        try (Connection conn = DatabaseConfig.getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute(sql);
+            log("Schema '" + s + "' is ready.");
+        } catch (SQLException e) {
+            throw new SQLException("Failed to ensure schema '" + s + "':\n" + describe(e), e.getSQLState(), e);
         }
     }
 
@@ -234,14 +269,14 @@ public class ExcelToPostgreSQL {
 
     // ----------------------------------------------------------------- DDL
 
-    private void createTable(String tableName, List<String> headers, List<String> columnTypes, boolean dropIfExists) throws SQLException {
+    private void createTable(String qualifiedTable, List<String> headers, List<String> columnTypes, boolean dropIfExists) throws SQLException {
         StringBuilder sql = new StringBuilder();
 
         if (dropIfExists) {
-            sql.append("DROP TABLE IF EXISTS ").append(quote(tableName)).append(";\n");
+            sql.append("DROP TABLE IF EXISTS ").append(qualifiedTable).append(";\n");
         }
 
-        sql.append("CREATE TABLE IF NOT EXISTS ").append(quote(tableName)).append(" (\n");
+        sql.append("CREATE TABLE IF NOT EXISTS ").append(qualifiedTable).append(" (\n");
 
         boolean hasIdColumn = headers.stream().anyMatch(h -> h.equalsIgnoreCase("id"));
 
@@ -268,7 +303,7 @@ public class ExcelToPostgreSQL {
 
         try (Connection conn = DatabaseConfig.getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql.toString());
-            log("Table '" + tableName + "' created successfully.");
+            log("Table " + qualifiedTable + " created successfully.");
         } catch (SQLException e) {
             throw new SQLException("Failed while creating table:\n" + describe(e), e.getSQLState(), e);
         }
@@ -276,10 +311,10 @@ public class ExcelToPostgreSQL {
 
     // ----------------------------------------------------------------- data
 
-    private int insertData(String tableName, List<String> headers, List<String> columnTypes, Sheet sheet) throws SQLException {
+    private int insertData(String qualifiedTable, List<String> headers, List<String> columnTypes, Sheet sheet) throws SQLException {
 
         StringBuilder sql = new StringBuilder();
-        sql.append("INSERT INTO ").append(quote(tableName)).append(" (");
+        sql.append("INSERT INTO ").append(qualifiedTable).append(" (");
 
         for (int i = 0; i < headers.size(); i++) {
             sql.append(quote(headers.get(i)));
@@ -346,7 +381,7 @@ public class ExcelToPostgreSQL {
                     e.getSQLState(), e);
         }
 
-        log(rowsInserted + " rows inserted into '" + tableName + "'.");
+        log(rowsInserted + " rows inserted into " + qualifiedTable + ".");
         return rowsInserted;
     }
 

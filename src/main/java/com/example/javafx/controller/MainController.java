@@ -299,9 +299,11 @@ public class MainController {
         loadPreviewButton.setDisable(true);
 
         final String finalTableName = tableName;
+        final String finalSchema = schemaField.getText().trim();
 
         log("========================================================");
-        log("Starting import of '" + selectedFile.getName() + "' into table '" + finalTableName +
+        log("Starting import of '" + selectedFile.getName() + "' into table '" +
+                (finalSchema.isEmpty() ? "public" : finalSchema) + "." + finalTableName +
                 "' (dropIfExists=" + dropIfExists + ")");
 
         Task<Integer> importTask = new Task<>() {
@@ -309,7 +311,7 @@ public class MainController {
             protected Integer call() throws Exception {
                 ExcelToPostgreSQL importer = new ExcelToPostgreSQL();
                 importer.setLogger(MainController.this::log);
-                return importer.importExcelToTable(selectedFile.getAbsolutePath(), finalTableName, dropIfExists);
+                return importer.importExcelToTable(selectedFile.getAbsolutePath(), finalSchema, finalTableName, dropIfExists);
             }
         };
 
