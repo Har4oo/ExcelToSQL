@@ -87,9 +87,23 @@
                     </padding>
                     <TableView fx:id="previewTableView" VBox.vgrow="ALWAYS">
                         <placeholder>
-                            <Label text="No data loaded. Select an Excel file to preview."/>
+                            <Label text="No data loaded. Select an Excel file and click 'Load Preview'."/>
                         </placeholder>
                     </TableView>
+                </VBox>
+            </TitledPane>
+            <TitledPane text="Debug Log (SQL &amp; Errors)" expanded="true" VBox.vgrow="ALWAYS">
+                <VBox spacing="5">
+                    <padding>
+                        <Insets bottom="10" left="10" right="10" top="10"/>
+                    </padding>
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <Label text="Full SQL statements, detected column types and error details appear here."/>
+                        <Button fx:id="clearLogButton" text="Clear" onAction="#onClearLogButtonClick"/>
+                        <Button fx:id="copyLogButton" text="Copy" onAction="#onCopyLogButtonClick"/>
+                    </HBox>
+                    <TextArea fx:id="logArea" editable="false" wrapText="false"
+                              style="-fx-font-family: 'monospaced';" VBox.vgrow="ALWAYS" prefHeight="180"/>
                 </VBox>
             </TitledPane>
             <VBox spacing="5">

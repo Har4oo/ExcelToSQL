@@ -2,13 +2,22 @@ package com.example.javafx.controller;
 
 import com.example.javafx.database.DatabaseConfig;
 import com.example.javafx.database.ExcelToPostgreSQL;
+import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.prefs.Preferences;
 
 public class MainController {
@@ -53,13 +62,22 @@ public class MainController {
     private CheckBox createIdCheckBox;
 
     @FXML
-    private TableView<Object> previewTableView;
+    private TableView<ObservableList<String>> previewTableView;
 
     @FXML
     private ProgressBar progressBar;
 
     @FXML
     private Label progressLabel;
+
+    @FXML
+    private TextArea logArea;
+
+    @FXML
+    private Button clearLogButton;
+
+    @FXML
+    private Button copyLogButton;
 
 
     @FXML
@@ -196,28 +214,67 @@ public class MainController {
 
     @FXML
     private void onLoadPreviewButtonClick() {
-        System.out.println("Load Preview button clicked!" );
-
         if (selectedFile == null) {
             showProgressError("Please select an Excel file first" );
             return;
         }
 
         progressLabel.setText("Loading preview..." );
-        progressBar.setProgress(-1);
+        progressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+        loadPreviewButton.setDisable(true);
+        log("Loading preview from: " + selectedFile.getAbsolutePath());
 
-        try {
-            System.out.println("Loading preview from: " + selectedFile.getAbsolutePath());
+        final File fileToPreview = selectedFile;
+        Task<ExcelToPostgreSQL.Preview> previewTask = new Task<>() {
+            @Override
+            protected ExcelToPostgreSQL.Preview call() throws Exception {
+                ExcelToPostgreSQL importer = new ExcelToPostgreSQL();
+                importer.setLogger(MainController.this::log);
+                return importer.loadPreview(fileToPreview.getAbsolutePath(), 100);
+            }
+        };
 
-            Thread.sleep(500);
-
-            showProgressSuccess("Preview loaded successfully! (simulated)" );
-            progressBar.setProgress(1);
-
-        } catch (Exception e) {
-            showProgressError("Error loading preview: " + e.getMessage());
+        previewTask.setOnSucceeded(e -> {
+            populatePreview(previewTask.getValue());
+            showProgressSuccess("Preview loaded: " + previewTask.getValue().rows.size() + " rows shown." );
             progressBar.setProgress(0);
+            loadPreviewButton.setDisable(false);
+        });
+
+        previewTask.setOnFailed(e -> {
+            Throwable error = previewTask.getException();
+            showProgressError("Error loading preview: " + error.getMessage());
+            logThrowable("Preview failed", error);
+            progressBar.setProgress(0);
+            loadPreviewButton.setDisable(false);
+        });
+
+        new Thread(previewTask).start();
+    }
+
+    private void populatePreview(ExcelToPostgreSQL.Preview preview) {
+        previewTableView.getColumns().clear();
+        previewTableView.getItems().clear();
+
+        for (int i = 0; i < preview.columns.size(); i++) {
+            final int colIndex = i;
+            ExcelToPostgreSQL.ColumnMeta meta = preview.columns.get(i);
+            TableColumn<ObservableList<String>, String> column =
+                    new TableColumn<>(meta.name + "\n(" + meta.type + ")");
+            column.setCellValueFactory(cellData -> {
+                ObservableList<String> row = cellData.getValue();
+                String value = (colIndex < row.size()) ? row.get(colIndex) : "";
+                return new javafx.beans.property.SimpleStringProperty(value);
+            });
+            column.setPrefWidth(140);
+            previewTableView.getColumns().add(column);
         }
+
+        ObservableList<ObservableList<String>> items = FXCollections.observableArrayList();
+        for (java.util.List<String> row : preview.rows) {
+            items.add(FXCollections.observableArrayList(row));
+        }
+        previewTableView.setItems(items);
     }
 
     @FXML
@@ -232,6 +289,10 @@ public class MainController {
 
         boolean dropIfExists = dropTableCheckBox.isSelected();
 
+        // Apply the connection details currently shown in the form, so Import works even if the
+        // user never pressed "Test Connection" (otherwise it silently falls back to application.properties).
+        applyConnectionFromForm();
+
         progressLabel.setText("Importing data... Please wait." );
         progressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
         importButton.setDisable(true);
@@ -239,11 +300,15 @@ public class MainController {
 
         final String finalTableName = tableName;
 
+        log("========================================================");
+        log("Starting import of '" + selectedFile.getName() + "' into table '" + finalTableName +
+                "' (dropIfExists=" + dropIfExists + ")");
+
         Task<Integer> importTask = new Task<>() {
             @Override
             protected Integer call() throws Exception {
                 ExcelToPostgreSQL importer = new ExcelToPostgreSQL();
-
+                importer.setLogger(MainController.this::log);
                 return importer.importExcelToTable(selectedFile.getAbsolutePath(), finalTableName, dropIfExists);
             }
         };
@@ -251,6 +316,7 @@ public class MainController {
         importTask.setOnSucceeded(e -> {
             int rowsInserted = importTask.getValue();
             showProgressSuccess("Success! " + rowsInserted + " rows inserted into '" + finalTableName + "'." );
+            log("Import finished successfully: " + rowsInserted + " rows.");
             progressBar.setProgress(1.0);
             importButton.setDisable(false);
             loadPreviewButton.setDisable(false);
@@ -258,14 +324,76 @@ public class MainController {
 
         importTask.setOnFailed(e -> {
             Throwable error = importTask.getException();
-            showProgressError("Import failed: " + error.getMessage());
+            showProgressError("Import failed: " + rootMessage(error));
+            logThrowable("IMPORT FAILED", error);
             progressBar.setProgress(0);
             importButton.setDisable(false);
             loadPreviewButton.setDisable(false);
-            error.printStackTrace();
         });
         saveSessionData();
         new Thread(importTask).start();
+    }
+
+    @FXML
+    private void onClearLogButtonClick() {
+        logArea.clear();
+    }
+
+    @FXML
+    private void onCopyLogButtonClick() {
+        ClipboardContent content = new ClipboardContent();
+        content.putString(logArea.getText());
+        Clipboard.getSystemClipboard().setContent(content);
+    }
+
+    /** Thread-safe append to the on-screen log, with a timestamp. */
+    private void log(String message) {
+        String stamped = "[" + LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")) + "] " + message;
+        System.out.println(stamped);
+        if (Platform.isFxApplicationThread()) {
+            logArea.appendText(stamped + "\n");
+        } else {
+            Platform.runLater(() -> logArea.appendText(stamped + "\n"));
+        }
+    }
+
+    /** Log a full throwable, including its cause chain and stack trace, so SQL errors are debuggable. */
+    private void logThrowable(String title, Throwable error) {
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        pw.println(title + ": " + error.getMessage());
+        Throwable cause = error.getCause();
+        while (cause != null) {
+            pw.println("Caused by: " + cause.getClass().getName() + ": " + cause.getMessage());
+            cause = cause.getCause();
+        }
+        pw.println("--- stack trace ---");
+        error.printStackTrace(pw);
+        log(sw.toString());
+    }
+
+    private String rootMessage(Throwable error) {
+        Throwable cause = error;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        String msg = cause.getMessage();
+        return (msg != null) ? msg.split("\n")[0] : cause.getClass().getSimpleName();
+    }
+
+    /** Push the connection details from the form into DatabaseConfig for the next getConnection(). */
+    private void applyConnectionFromForm() {
+        String host = hostField.getText().trim();
+        String port = portField.getText().trim();
+        String database = databaseField.getText().trim();
+        String username = usernameField.getText().trim();
+        String password = passwordField.getText();
+
+        String url = String.format("jdbc:postgresql://%s:%s/%s",
+                host.isEmpty() ? "localhost" : host,
+                port.isEmpty() ? "5432" : port,
+                database);
+        DatabaseConfig.setCredentials(url, username, password);
     }
 
     @FXML
